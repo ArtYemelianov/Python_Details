@@ -33,7 +33,7 @@ conn = engine.connect()
 metadata = MetaData()
 hash_table = Table(HashTable.TABLE_NAME, metadata,
                    Column(HashTable.COL_ID, Integer, primary_key=True, autoincrement=True),
-                   Column(HashTable.COL_DECRYPTED, String, unique=False, nullable=False),
+                   Column(HashTable.COL_DECRYPTED, String, unique=True, nullable=False),
                    Column(HashTable.COL_ENCRYPTED, String, unique=False, nullable=False),
                    )
 metadata.create_all(engine)
@@ -97,7 +97,7 @@ def next_job(active_symbols, symbols, max_length=None):
     if not max_length:
         max_length = len(symbols)
 
-    if len(active_symbols) == max_length:
+    if len(active_symbols) == max_length - 1:
         ls = []
         for s in symbols:
             new_str = active_symbols + s
@@ -107,3 +107,24 @@ def next_job(active_symbols, symbols, max_length=None):
     else:
         for s in symbols:
             next_job(active_symbols + s, symbols, max_length)
+
+
+def run_job(active_symbols, symbols, max_length=None, last_hash=None):
+    if not max_length:
+        max_length = len(symbols)
+
+    index = 0
+    if last_hash:
+        index = last_hash[0]
+        last_hash = last_hash[1:]
+
+    if len(active_symbols) == max_length - 1:
+        ls = []
+        for i in range(symbols.find(index), len(symbols)):
+            new_str = active_symbols + symbols[i]
+            utf = new_str.encode('utf-8')
+            ls.append((new_str, hashlib.sha1(utf).hexdigest()))
+        insertArray(ls)
+    else:
+        for i in range(symbols.find(index), len(symbols)):
+            run_job(active_symbols + symbols[i], symbols, max_length, last_hash)
