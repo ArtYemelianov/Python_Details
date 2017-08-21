@@ -3,6 +3,11 @@ import requests, json
 
 class Station:
     def __init__(self, id, name):
+        """
+
+        :param int id: Id of station
+        :param str name:  Name of station
+        """
         self.id = id
         self.name = name
 
@@ -13,7 +18,7 @@ class Station:
         return str(self.values())
 
     def __repr__(self):
-        return 'id: {}, name: {}'.format(self.id, self.name)
+        return 'id: %d, name: %s' % (self.id, self.name)
 
 
 class TrainRequest:
@@ -72,6 +77,8 @@ class TrainRequest:
             data['model'] = item['model']
             data['category'] = item['category']
             data['travel_time'] = item['travel_time']
+            data['station_id_from'] = self.station_from.id
+            data['station_id_till'] = self.station_till.id
             res.append(TrainResponse(**data))
         return res
 
@@ -106,6 +113,8 @@ class TrainResponse:
         :param StationResponse station_till: A till station
         :param list of (TypeResponse) types: A list of types
         '''
+        self.station_id_from = kwargs['station_id_from']
+        self.station_id_till = kwargs['station_id_till']
         self.num = kwargs['num']
         self.model = kwargs['model']
         self.category = kwargs.get('category', None)
@@ -120,6 +129,20 @@ class TrainResponse:
                                            self.station_from,
                                            self.station_till,
                                            self.types)
+
+    def __str__(self):
+        return " num %s, " \
+               "model %s, " \
+               "category  %d, " \
+               "travel_time %s " \
+               "%s -> %s, %s}" % \
+               (self.num,
+                self.model,
+                self.category,
+                self.travel_time,
+                self.station_from,
+                self.station_till,
+                self.types)
 
 
 class StationResponse:
@@ -159,3 +182,74 @@ def request_and_parse_station(name):
         return []
     titles = [Station(x['value'], x['title']) for x in json.loads(res.text)]
     return titles
+
+
+def compose_coaches_body(station_from, station_till, train, coach_type, date):
+    """
+    Compose body for coaches request
+
+    :param Station station_from: A from station
+    :param Station station_till: A till station
+    :param TrainResponse train: A train
+    :return: dict
+    """
+    return "station_id_from={}" \
+           "&station_id_till={}" \
+           "&train={}" \
+           "&coach_type={}" \
+           "&date_dep={}" \
+           "&round_trip=0" \
+           "&another_ec=0".format(
+        station_from,
+        station_till,
+        train,
+        coach_type,
+        date)
+
+
+def encode_str(value):
+    import ast
+    return ast.literal_eval(str(value.encode())[1:].replace("\\x", '%'))
+
+
+class CoachesRequest:
+    URL = 'http://booking.uz.gov.ua/ru/purchase/coaches/'
+
+    def __init__(self, train_response):
+        '''
+
+        :param TrainResponse train_response: Train response
+        '''
+        self.station_id_from = train_response.station_id_from
+        self.types = [encode_str(x.id) for x in train_response.types]
+        self.station_id_till = train_response.station_id_till
+        self.train = encode_str(train_response.num)
+
+        self.date_dep = train_response.station_from.date
+        self.headers = {'Content-Type': 'application/x-www-form-urlencoded'}
+
+    def make_request(self, **kwargs):
+        """
+        Makes post request
+        :param str train: Name of train
+        :param str coach_type: Coach type
+        :param int type_index: Index of type
+        """
+        train = kwargs.get('train', self.train)
+        type_index = kwargs['type_index']
+        coach_type = self.types[type_index]
+        body = ('station_id_from={}' \
+                '&station_id_till={}' \
+                '&train={}' \
+                '&coach_type={}' \
+                '&date_dep={}' \
+                '&round_trip=0' \
+                '&another_ec=0').format(
+            self.station_id_from,
+            self.station_id_till,
+            train,
+            coach_type,
+            self.date_dep,
+        )
+        self.result = requests.post(CoachesRequest.URL, data=body, headers=self.headers)
+        return self.result
