@@ -212,6 +212,16 @@ def encode_str(value):
     return ast.literal_eval(str(value.encode())[1:].replace("\\x", '%'))
 
 
+def decode_str(value):
+    """
+
+    :param str value:
+    :return:
+    """
+    import ast
+    return ast.literal_eval("b'{}'".format(value.replace("%", '\\x'))).decode()
+
+
 class CoachesRequest:
     URL = 'http://booking.uz.gov.ua/ru/purchase/coaches/'
 
@@ -231,13 +241,10 @@ class CoachesRequest:
     def make_request(self, **kwargs):
         """
         Makes post request
-        :param str train: Name of train
-        :param str coach_type: Coach type
         :param int type_index: Index of type
         """
-        train = kwargs.get('train', self.train)
         type_index = kwargs['type_index']
-        coach_type = self.types[type_index]
+        self.coach_type = self.types[type_index]
         body = ('station_id_from={}' \
                 '&station_id_till={}' \
                 '&train={}' \
@@ -247,9 +254,105 @@ class CoachesRequest:
                 '&another_ec=0').format(
             self.station_id_from,
             self.station_id_till,
-            train,
-            coach_type,
+            self.train,
+            self.coach_type,
             self.date_dep,
         )
         self.result = requests.post(CoachesRequest.URL, data=body, headers=self.headers)
         return self.result
+
+    def compose_coach_request(self, index):
+        return CoachRequest(self, get_data()[index])
+
+    def has_error(self):
+        if self.result.status_code != 200:
+            return "Error code %d" % self.result.status_code
+        return None
+
+    def get_data(self):
+        data = json.loads(self.result.text)
+        ls = data['coaches']
+        res = [CoachesResponse(**x) for x in ls]
+        return res
+
+
+class CoachesResponse:
+    def __init__(self, **kwargs):
+        '''
+
+        :param int num: A number of coach
+        :param str type: A type of coach
+        :param str coach_class: A coach class
+        :param int places_cnt : Amount of places
+        :param bool has_bedding : Coach has bedding or not
+        :param int reserve_price ; Price of reserve
+        :param list of str services: List of optional services
+        :param list of dict prices: Prices
+        :param int places_allowed: Allowed places
+        :param int places_max: Allowed max
+        '''
+        self.num = kwargs['num']
+        self.type = kwargs['type']
+        self.allow_bonus = kwargs['allow_bonus']
+        self.coach_class = kwargs["coach_class"]
+        self.places_cnt = kwargs['places_cnt']
+        self.has_bedding = kwargs['has_bedding']
+        self.reserve_price = kwargs['reserve_price']
+        self.services = kwargs['services']
+        self.prices = kwargs['prices']
+
+
+class CoachRequest:
+    URL = 'http://booking.uz.gov.ua/ru/purchase/coach/'
+
+    def __init__(self, coaches_request, coaches_response):
+        self.cache_version = ''
+        self.station_id_from = coaches_request.station_id_from
+        self.station_id_till = coaches_request.station_id_till
+        self.train = coaches_request.train
+        self.model = 0
+        self.coach_num = coaches_response.num
+        self.coach_type = coaches_request.coach_type
+        self.coach_class = coaches_response.coach_class
+        self.date_dep = coaches_request.date_dep
+        self.headers = {'Content-Type': 'application/x-www-form-urlencoded'}
+
+    def make_request(self, **kwargs):
+        body = 'cache_version={}' \
+               '&station_id_from={}' \
+               '&station_id_till={}' \
+               '&train={}' \
+               '&model={}' \
+               '&coach_num={}' \
+               '&coach_type={}' \
+               '&coach_class={}' \
+               '&date_dep={}' \
+               '&cached_scheme[0]={}'.format(
+            self.cache_version,
+            self.station_id_from,
+            self.station_id_till,
+            self.train,
+            self.model,
+            self.coach_num,
+            self.coach_type,
+            encode_str(self.coach_class),
+            self.date_dep,
+            encode_str('П01'))
+        # П01, К22
+        self.result = requests.post(CoachRequest.URL, headers=self.headers, data=body)
+
+    def get_data(self):
+        data = json.loads(self.result.text)
+        return CoachResponse(data['value'])
+
+
+class CoachResponse:
+    def __init__(self, data):
+        '''
+
+        :param dict data:
+        '''
+        self.places = data.get('places', None)
+
+    def __repr__(self):
+        return "%s" % self.places
